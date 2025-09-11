@@ -1,5 +1,6 @@
 package com.evion.evion_backend.routeplanner.service;
 
+import com.evion.evion_backend.batteryEnergySimulation.service.BatterySimulationService;
 import com.evion.evion_backend.chargingStationManagement.model.ChargingStation;
 import com.evion.evion_backend.chargingStationManagement.repository.ChargingStationRepository;
 import com.evion.evion_backend.routeplanner.dto.Coordinate;
@@ -9,17 +10,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.*;
 import java.util.stream.Collectors;
 
-/**
- * RouteService: calls ORS for the real route and computes battery-aware
- * charging stops.
- */
 @Service
 @RequiredArgsConstructor
 public class RouteService {
@@ -48,11 +44,12 @@ public class RouteService {
     private final ChargingStationRepository stationRepository;
     private final RestTemplate restTemplate;
     private final ObjectMapper mapper;
+    private final BatterySimulationService batteryService;
 
     public RouteResponse planRoute(RouteRequest req) {
         JsonNode ors = callOrs(req);
 
-        // parse polyline coords (ORS returns [lng,lat])
+        // parse polyline coords
         JsonNode coordsNode = ors.path("features").get(0).path("geometry").path("coordinates");
         List<Coordinate> polyline = new ArrayList<>();
         for (JsonNode pair : coordsNode) {
@@ -70,22 +67,32 @@ public class RouteService {
         double durationSec = summary.path("duration").asDouble();
         double distanceKm = distanceM / 1000.0;
 
-        // consumption selection
-        double consumption = selectConsumption(req.getDrivingMode(), req.getConsumptionPerKm());
+        // Centralized consumption
+        double consumption = batteryService.selectConsumption(
+                req.getDrivingMode(),
+                req.getConsumptionPerKm(),
+                ecoConsumption,
+                normalConsumption,
+                aggressiveConsumption
+        );
 
-        // estimate energy for whole trip
+        //Centralized usable range
+        double usableRangeKm = batteryService.computeUsableRangeKm(
+                req.getBatteryCapacityKwh(),
+                req.getCurrentChargePct(),
+                consumption,
+                reserveFactor
+        );
+
+        // estimated energy
         double estimatedEnergy = distanceKm * consumption;
 
-        // compute usable range from current battery (kWh -> km)
-        double usableRangeKm = computeUsableRangeKm(req.getBatteryCapacityKwh(), req.getCurrentChargePct(), consumption);
-
-        // if entire trip can be covered
+        // if trip possible without charging
         List<Long> suggestedStops = new ArrayList<>();
-        String message = null;
-        if (usableRangeKm >= distanceKm * (1.0 + reserveFactor)) {
+        String message;
+        if (usableRangeKm >= distanceKm) {
             message = "Trip possible without charging (reserve applied)";
         } else {
-            // Query only stations within a bounding box for performance (if using PostGIS, otherwise fallback to findAll)
             List<ChargingStation> allStations = stationRepository.findAll();
 
             List<ChargingStation> reachableStations = allStations.parallelStream()
@@ -94,7 +101,6 @@ public class RouteService {
                     .collect(Collectors.toList());
 
             if (!reachableStations.isEmpty()) {
-                // Suggest closest reachable station first (including start)
                 ChargingStation closest = reachableStations.stream()
                         .min(Comparator.comparingDouble(st
                                 -> haversine(req.getStartLat(), req.getStartLng(),
@@ -103,18 +109,15 @@ public class RouteService {
                 suggestedStops.add(closest.getId());
             }
 
-            // Continue with iterative planning along the route
-            List<Long> routeStops = planChargingStopsAlongRoute(polyline, usableRangeKm, consumption, allStations);
+            List<Long> routeStops = planChargingStopsAlongRoute(polyline, usableRangeKm, consumption, allStations,
+                    batteryService.batteryOrFallback(req.getBatteryCapacityKwh()));
             suggestedStops.addAll(routeStops);
 
-            if (suggestedStops.isEmpty()) {
-                message = "No charging stops found within search radius to cover the route";
-            } else {
-                message = "Charging stops suggested along the route";
-            }
+            message = suggestedStops.isEmpty()
+                    ? "No charging stops found within search radius to cover the route"
+                    : "Charging stops suggested along the route";
         }
 
-        // calculate eco score using simplified point-based system
         int ecoScore = calculateEcoScore(distanceKm, estimatedEnergy, durationSec, req.getDrivingMode());
 
         return RouteResponse.builder()
@@ -128,85 +131,15 @@ public class RouteService {
                 .build();
     }
 
-    // Haversine helper for distance in km
-    private double haversine(double lat1, double lon1, double lat2, double lon2) {
-        final int R = 6371;
-        double dLat = Math.toRadians(lat2 - lat1);
-        double dLon = Math.toRadians(lon2 - lon1);
-        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
-                + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
-                * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    }
-
-    // Calls ORS directions endpoint
-    private JsonNode callOrs(RouteRequest req) {
-        Map<String, Object> body = new HashMap<>();
-        List<List<Double>> coordinates = new ArrayList<>();
-        coordinates.add(List.of(req.getStartLng(), req.getStartLat()));
-        coordinates.add(List.of(req.getEndLng(), req.getEndLat()));
-        body.put("coordinates", coordinates);
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        if (orsApiKey != null && !orsApiKey.isBlank()) {
-            headers.set("Authorization", orsApiKey);
-        }
-
-        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
-        ResponseEntity<String> resp = restTemplate.exchange(orsDirectionsUrl, HttpMethod.POST, entity, String.class);
-        try {
-            return mapper.readTree(resp.getBody());
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to parse ORS response", e);
-        }
-    }
-
-    // Select consumption: priority: explicit consumptionPerKm, driving mode, defaults
-    private double selectConsumption(String drivingMode, Double overrideConsumption) {
-        if (overrideConsumption != null && overrideConsumption > 0) {
-            return overrideConsumption;
-        }
-        if (drivingMode == null) {
-            return normalConsumption;
-        }
-        switch (drivingMode.toUpperCase()) {
-            case "ECO":
-                return ecoConsumption;
-            case "AGGRESSIVE":
-                return aggressiveConsumption;
-            default:
-                return normalConsumption;
-        }
-    }
-
-    // Compute usable range in km from battery capacity KWh and currentChargePct
-    private double computeUsableRangeKm(Double batteryKwh, Double currentPct, double consumptionPerKm) {
-        if (batteryKwh == null || currentPct == null || consumptionPerKm <= 0) {
-            // fallback: assume large range to not force stops when insufficient info
-            return Double.MAX_VALUE;
-        }
-        double energyAvailableKwh = (currentPct / 100.0) * batteryKwh;
-        double usableRange = energyAvailableKwh / consumptionPerKm;
-        // subtract small margin to avoid edge-of-range
-        return usableRange * (1.0 - reserveFactor);
-    }
-
-    /**
-     * Plan stops by walking along polyline distance and inserting stations
-     * where needed. Algorithm: - Walk along polyline accumulating distance. -
-     * When accumulated distance since last charge >= usableRangeKm, search for
-     * nearest station within stationSearchRadiusKm around that polyline point.
-     * If found, add it as a stop, reset accumulated distance from that station
-     * point and continue. - Stop when destination reachable.
-     */
-    private List<Long> planChargingStopsAlongRoute(List<Coordinate> polyline, double usableRangeKm, double consumptionPerKm, List<ChargingStation> allStations) {
+    // --- Charging Stops ---
+    private List<Long> planChargingStopsAlongRoute(List<Coordinate> polyline, double usableRangeKm,
+            double consumptionPerKm, List<ChargingStation> allStations,
+            double batteryKwh) {
         List<Long> stops = new ArrayList<>();
         if (usableRangeKm <= 0) {
             return stops;
         }
 
-        // Precompute segment distances between consecutive points
         int n = polyline.size();
         List<Double> segDistKm = new ArrayList<>(Collections.nCopies(Math.max(0, n - 1), 0.0));
         for (int i = 0; i < n - 1; i++) {
@@ -219,7 +152,6 @@ public class RouteService {
         double remainingRouteKm = totalDistanceKm(segDistKm);
         int idx = 0;
 
-        // walk the polyline
         while (idx < segDistKm.size() && remainingRouteKm > remainingRange) {
             double seg = segDistKm.get(idx);
             if (seg <= remainingRange) {
@@ -231,74 +163,52 @@ public class RouteService {
                 Coordinate from = polyline.get(idx);
                 Coordinate to = polyline.get(idx + 1);
                 double fraction = remainingRange / seg;
-                double pointLat = from.getLat() + (to.getLat() - from.getLat()) * fraction;
-                double pointLng = from.getLng() + (to.getLng() - from.getLng()) * fraction;
-                Coordinate neededPoint = new Coordinate(pointLat, pointLng);
+                Coordinate neededPoint = new Coordinate(
+                        from.getLat() + (to.getLat() - from.getLat()) * fraction,
+                        from.getLng() + (to.getLng() - from.getLng()) * fraction
+                );
 
                 Optional<ChargingStation> opt = findNearestStationWithin(allStations, neededPoint, stationSearchRadiusKm);
                 if (opt.isPresent()) {
-                    ChargingStation st = opt.get();
-                    stops.add(st.getId());
-                    remainingRange = computeUsableRangeKm(reqBatteryOrFallback(), 100.0, consumptionPerKm);
+                    stops.add(opt.get().getId());
+                    remainingRange = batteryService.computeUsableRangeKm(batteryKwh, 100.0, consumptionPerKm, reserveFactor);
                     idx++;
                 } else {
-                    boolean foundForward = false;
-                    int lookIdx = idx + 1;
-                    double accumDist = seg - remainingRange;
-                    while (!foundForward && lookIdx < segDistKm.size()) {
-                        double distToThisPoint = accumDist;
-                        Coordinate candidatePoint = polyline.get(lookIdx);
-                        Optional<ChargingStation> opt2 = findNearestStationWithin(allStations, candidatePoint, stationSearchRadiusKm);
-                        if (opt2.isPresent()) {
-                            stops.add(opt2.get().getId());
-                            remainingRange = computeUsableRangeKm(reqBatteryOrFallback(), 100.0, consumptionPerKm);
-                            idx = lookIdx;
-                            foundForward = true;
-                        } else {
-                            accumDist += segDistKm.get(lookIdx);
-                            lookIdx++;
-                        }
-                    }
-                    if (!foundForward) {
-                        return Collections.emptyList();
-                    }
+                    return Collections.emptyList();
                 }
             }
         }
         return stops;
     }
 
-    // finds nearest station within radiusKm of the given point
-    private Optional<ChargingStation> findNearestStationWithin(List<ChargingStation> stations, Coordinate point, double radiusKm) {
-        return stations.parallelStream()
-                .filter(s -> distanceKm(point.getLat(), point.getLng(), s.getLatitude(), s.getLongitude()) <= radiusKm)
-                .min(Comparator.comparingDouble(s -> distanceKm(point.getLat(), point.getLng(), s.getLatitude(), s.getLongitude())));
-    }
-
-    // small helper: total distance
-    private double totalDistanceKm(List<Double> segs) {
-        return segs.stream().mapToDouble(Double::doubleValue).sum();
-    }
-
-    // Haversine distance (km)
-    private double distanceKm(double lat1, double lon1, double lat2, double lon2) {
+    // --- Utilities ---
+    private double haversine(double lat1, double lon1, double lat2, double lon2) {
+        /* same as before */
         final int R = 6371;
         double dLat = Math.toRadians(lat2 - lat1);
         double dLon = Math.toRadians(lon2 - lon1);
         double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
                 + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
                 * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-        double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        return R * c;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     }
 
-    // a conservative fallback to battery capacity if not provided (you can replace with a default)
-    private double reqBatteryOrFallback() {
-        return 60.0;
+    private double distanceKm(double lat1, double lon1, double lat2, double lon2) {
+        return haversine(lat1, lon1, lat2, lon2);
     }
 
-    // simplified eco score function (same as earlier)
+    private Optional<ChargingStation> findNearestStationWithin(List<ChargingStation> stations, Coordinate point, double radiusKm) {
+        return stations.parallelStream()
+                .filter(s -> distanceKm(point.getLat(), point.getLng(), s.getLatitude(), s.getLongitude()) <= radiusKm)
+                .min(Comparator.comparingDouble(s -> distanceKm(point.getLat(), point.getLng(), s.getLatitude(), s.getLongitude())));
+    }
+
+    private double totalDistanceKm(List<Double> segs) {
+        return segs.stream().mapToDouble(Double::doubleValue).sum();
+    }
+
     private int calculateEcoScore(double distanceKm, double energyKwh, double durationSec, String drivingMode) {
+        /* same as before */
         int score = 100;
         double avgSpeed = (durationSec > 0) ? (distanceKm / (durationSec / 3600.0)) : 0.0;
         double consumptionPerKm = (distanceKm > 0) ? (energyKwh / distanceKm) : 0;
@@ -319,12 +229,29 @@ public class RouteService {
             score += 10;
         }
 
-        score = Math.max(0, Math.min(100, score));
-        return score;
+        return Math.max(0, Math.min(100, score));
     }
 
     private double round(double v, int decimals) {
         double scale = Math.pow(10, decimals);
         return Math.round(v * scale) / scale;
+    }
+
+    // --- ORS API Call ---
+    private JsonNode callOrs(RouteRequest req) {
+        try {
+            String url = orsDirectionsUrl + "?api_key=" + orsApiKey;
+            Map<String, Object> body = new HashMap<>();
+            List<List<Double>> coordinates = Arrays.asList(
+                    Arrays.asList(req.getStartLng(), req.getStartLat()),
+                    Arrays.asList(req.getEndLng(), req.getEndLat())
+            );
+            body.put("coordinates", coordinates);
+
+            String response = restTemplate.postForObject(url, body, String.class);
+            return mapper.readTree(response);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to call ORS API", e);
+        }
     }
 }
