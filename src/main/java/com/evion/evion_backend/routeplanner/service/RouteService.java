@@ -46,8 +46,8 @@ public class RouteService {
     private double reserveFactor;
 
     private final ChargingStationRepository stationRepository;
-    private final RestTemplate restTemplate = new RestTemplate();
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final RestTemplate restTemplate;
+    private final ObjectMapper mapper;
 
     public RouteResponse planRoute(RouteRequest req) {
         JsonNode ors = callOrs(req);
@@ -85,12 +85,13 @@ public class RouteService {
         if (usableRangeKm >= distanceKm * (1.0 + reserveFactor)) {
             message = "Trip possible without charging (reserve applied)";
         } else {
-            // Check stations reachable from the starting point
+            // Query only stations within a bounding box for performance (if using PostGIS, otherwise fallback to findAll)
             List<ChargingStation> allStations = stationRepository.findAll();
-            List<ChargingStation> reachableStations = allStations.stream()
+
+            List<ChargingStation> reachableStations = allStations.parallelStream()
                     .filter(st -> haversine(req.getStartLat(), req.getStartLng(),
                     st.getLatitude(), st.getLongitude()) <= usableRangeKm)
-                    .toList();
+                    .collect(Collectors.toList());
 
             if (!reachableStations.isEmpty()) {
                 // Suggest closest reachable station first (including start)
@@ -103,7 +104,7 @@ public class RouteService {
             }
 
             // Continue with iterative planning along the route
-            List<Long> routeStops = planChargingStopsAlongRoute(polyline, usableRangeKm, consumption);
+            List<Long> routeStops = planChargingStopsAlongRoute(polyline, usableRangeKm, consumption, allStations);
             suggestedStops.addAll(routeStops);
 
             if (suggestedStops.isEmpty()) {
@@ -127,7 +128,7 @@ public class RouteService {
                 .build();
     }
 
-// Haversine helper for distance in km
+    // Haversine helper for distance in km
     private double haversine(double lat1, double lon1, double lat2, double lon2) {
         final int R = 6371;
         double dLat = Math.toRadians(lat2 - lat1);
@@ -199,13 +200,11 @@ public class RouteService {
      * If found, add it as a stop, reset accumulated distance from that station
      * point and continue. - Stop when destination reachable.
      */
-    private List<Long> planChargingStopsAlongRoute(List<Coordinate> polyline, double usableRangeKm, double consumptionPerKm) {
+    private List<Long> planChargingStopsAlongRoute(List<Coordinate> polyline, double usableRangeKm, double consumptionPerKm, List<ChargingStation> allStations) {
         List<Long> stops = new ArrayList<>();
         if (usableRangeKm <= 0) {
             return stops;
         }
-
-        final List<ChargingStation> allStations = stationRepository.findAll();
 
         // Precompute segment distances between consecutive points
         int n = polyline.size();
@@ -222,7 +221,6 @@ public class RouteService {
 
         // walk the polyline
         while (idx < segDistKm.size() && remainingRouteKm > remainingRange) {
-            // move along segments consuming range
             double seg = segDistKm.get(idx);
             if (seg <= remainingRange) {
                 remainingRange -= seg;
@@ -230,44 +228,30 @@ public class RouteService {
                 idx++;
                 continue;
             } else {
-                // we cannot finish this segment with remainingRange: compute the point along this segment
                 Coordinate from = polyline.get(idx);
                 Coordinate to = polyline.get(idx + 1);
-                double fraction = remainingRange / seg; // 0..1
+                double fraction = remainingRange / seg;
                 double pointLat = from.getLat() + (to.getLat() - from.getLat()) * fraction;
                 double pointLng = from.getLng() + (to.getLng() - from.getLng()) * fraction;
                 Coordinate neededPoint = new Coordinate(pointLat, pointLng);
 
-                // search for nearest station within radius
                 Optional<ChargingStation> opt = findNearestStationWithin(allStations, neededPoint, stationSearchRadiusKm);
                 if (opt.isPresent()) {
                     ChargingStation st = opt.get();
                     stops.add(st.getId());
-
-                    // reset remaining range as if we charged to full at that station (simple model)
-                    remainingRange = computeUsableRangeKm(/* batteryKwh */reqBatteryOrFallback(), /* pct */ 100.0, consumptionPerKm);
-                    // now compute distance from station point to current 'to' point in same segment
-                    double distFromStationToSegmentEnd = distanceKm(st.getLatitude(), st.getLongitude(), to.getLat(), to.getLng());
-                    // subtract the part already traveled in this segment and continue
-                    remainingRouteKm -= remainingRange; // approximate: we charged fully and proceed
-                    // To keep loop stable, advance idx a bit
-                    idx++; // move forward (approximate)
+                    remainingRange = computeUsableRangeKm(reqBatteryOrFallback(), 100.0, consumptionPerKm);
+                    idx++;
                 } else {
-                    // no station nearby the would-be depletion point -> try extending radius or fail
-                    // we will try scanning forward along polyline for next possible station within some lookahead segments
                     boolean foundForward = false;
                     int lookIdx = idx + 1;
-                    double accumDist = seg - remainingRange; // remaining distance in current segment after we deplete
+                    double accumDist = seg - remainingRange;
                     while (!foundForward && lookIdx < segDistKm.size()) {
                         double distToThisPoint = accumDist;
                         Coordinate candidatePoint = polyline.get(lookIdx);
-                        // try find station near this later polyline point
                         Optional<ChargingStation> opt2 = findNearestStationWithin(allStations, candidatePoint, stationSearchRadiusKm);
                         if (opt2.isPresent()) {
                             stops.add(opt2.get().getId());
                             remainingRange = computeUsableRangeKm(reqBatteryOrFallback(), 100.0, consumptionPerKm);
-                            // continue from lookIdx
-                            remainingRouteKm -= distToThisPoint;
                             idx = lookIdx;
                             foundForward = true;
                         } else {
@@ -276,24 +260,19 @@ public class RouteService {
                         }
                     }
                     if (!foundForward) {
-                        // no station found along forward lookahead
-                        // give up: return what we have (empty if none) and message to user
                         return Collections.emptyList();
                     }
                 }
             }
         }
-
-        // if we reach here, either destination is now reachable or stops contain planned points
         return stops;
     }
 
     // finds nearest station within radiusKm of the given point
     private Optional<ChargingStation> findNearestStationWithin(List<ChargingStation> stations, Coordinate point, double radiusKm) {
-        return stations.stream()
+        return stations.parallelStream()
                 .filter(s -> distanceKm(point.getLat(), point.getLng(), s.getLatitude(), s.getLongitude()) <= radiusKm)
-                .sorted(Comparator.comparingDouble(s -> distanceKm(point.getLat(), point.getLng(), s.getLatitude(), s.getLongitude())))
-                .findFirst();
+                .min(Comparator.comparingDouble(s -> distanceKm(point.getLat(), point.getLng(), s.getLatitude(), s.getLongitude())));
     }
 
     // small helper: total distance
@@ -315,7 +294,6 @@ public class RouteService {
 
     // a conservative fallback to battery capacity if not provided (you can replace with a default)
     private double reqBatteryOrFallback() {
-        // For production, pass battery capacity via RouteRequest; here we assume a standard battery
         return 60.0;
     }
 
