@@ -1,4 +1,4 @@
-package com.evion.evion_backend.chargingstationmanagement.model;
+package com.evion.evion_backend.chargingStationManagement.model;
 
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;

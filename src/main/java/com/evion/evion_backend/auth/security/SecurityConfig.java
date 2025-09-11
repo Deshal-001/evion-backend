@@ -41,6 +41,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/api/stations/**").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.PUT, "/api/stations/**").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.GET, "/api/stations/**").authenticated()
+                .requestMatchers("/api/route/**").permitAll()
                 // Everything else requires auth
                 .anyRequest().authenticated()
                 )

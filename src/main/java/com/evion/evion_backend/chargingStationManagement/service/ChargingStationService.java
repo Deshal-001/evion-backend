@@ -1,12 +1,12 @@
-package com.evion.evion_backend.chargingstationmanagement.service;
+package com.evion.evion_backend.chargingStationManagement.service;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-import com.evion.evion_backend.chargingstationmanagement.dto.ChargingStationRequest;
-import com.evion.evion_backend.chargingstationmanagement.dto.ChargingStationResponse;
-import com.evion.evion_backend.chargingstationmanagement.model.ChargingStation;
-import com.evion.evion_backend.chargingstationmanagement.repository.ChargingStationRepository;
+import com.evion.evion_backend.chargingStationManagement.dto.ChargingStationRequest;
+import com.evion.evion_backend.chargingStationManagement.dto.ChargingStationResponse;
+import com.evion.evion_backend.chargingStationManagement.model.ChargingStation;
+import com.evion.evion_backend.chargingStationManagement.repository.ChargingStationRepository;
 
 import java.util.List;
 import java.util.stream.Collectors;

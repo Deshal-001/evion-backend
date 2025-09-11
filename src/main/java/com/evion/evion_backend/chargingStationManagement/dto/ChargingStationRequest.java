@@ -1,6 +1,6 @@
-package com.evion.evion_backend.chargingstationmanagement.dto;
+package com.evion.evion_backend.chargingStationManagement.dto;
 
-import com.evion.evion_backend.chargingstationmanagement.model.ChargingStation;
+import com.evion.evion_backend.chargingStationManagement.model.ChargingStation;
 
 import lombok.Data;
 
