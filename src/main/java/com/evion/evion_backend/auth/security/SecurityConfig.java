@@ -1,8 +1,8 @@
 package com.evion.evion_backend.auth.security;
 
-
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -33,14 +33,19 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable) // Disable CSRF for APIs
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .authorizeHttpRequests(auth -> auth
-                                .requestMatchers("/api/auth/**").permitAll() // Allow login/register
-                                .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                                .requestMatchers("/api/user").authenticated()
-//                        .requestMatchers("/api/auth/users").authenticated()// Admin-only endpoints
-                                .anyRequest().authenticated() // Everything else requires auth
+                //Auth endpoints
+                .requestMatchers("/api/auth/**").permitAll() // Allow login/register
+                .requestMatchers("/api/user").authenticated()
+                //Charging Station endpoints
+                .requestMatchers(HttpMethod.DELETE, "/api/stations/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.POST, "/api/stations/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.PUT, "/api/stations/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.GET, "/api/stations/**").authenticated()
+                // Everything else requires auth
+                .anyRequest().authenticated()
                 )
                 .sessionManagement(session -> session
-                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS)); // No sessions
+                .sessionCreationPolicy(SessionCreationPolicy.STATELESS)); // No sessions
 
         // Add JWT filter before UsernamePasswordAuthenticationFilter
         http.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
