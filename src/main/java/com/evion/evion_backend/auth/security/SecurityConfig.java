@@ -41,6 +41,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/api/stations/**").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.PUT, "/api/stations/**").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.GET, "/api/stations/**").authenticated()
+                .requestMatchers("/api/trips/**").authenticated()
                 // Route Planner endpoints
                 .requestMatchers("/api/route/**").permitAll()
                 //Battery endpoints

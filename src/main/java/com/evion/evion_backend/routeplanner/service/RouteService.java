@@ -6,6 +6,8 @@ import com.evion.evion_backend.chargingStationManagement.repository.ChargingStat
 import com.evion.evion_backend.routeplanner.dto.Coordinate;
 import com.evion.evion_backend.routeplanner.dto.RouteRequest;
 import com.evion.evion_backend.routeplanner.dto.RouteResponse;
+import com.evion.evion_backend.utils.helper.EcoScoreCalculator;
+import com.evion.evion_backend.utils.helper.OrsApiHelper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -47,7 +49,7 @@ public class RouteService {
     private final BatterySimulationService batteryService;
 
     public RouteResponse planRoute(RouteRequest req) {
-        JsonNode ors = callOrs(req);
+        JsonNode ors = OrsApiHelper.callOrs(req, orsDirectionsUrl, orsApiKey, restTemplate, mapper);
 
         // parse polyline coords
         JsonNode coordsNode = ors.path("features").get(0).path("geometry").path("coordinates");
@@ -118,7 +120,7 @@ public class RouteService {
                     : "Charging stops suggested along the route";
         }
 
-        int ecoScore = calculateEcoScore(distanceKm, estimatedEnergy, durationSec, req.getDrivingMode());
+        int ecoScore = EcoScoreCalculator.calculateEcoScore(distanceKm, estimatedEnergy, durationSec, req.getDrivingMode(), null, null);
 
         return RouteResponse.builder()
                 .distanceKm(round(distanceKm, 3))
@@ -207,51 +209,9 @@ public class RouteService {
         return segs.stream().mapToDouble(Double::doubleValue).sum();
     }
 
-    private int calculateEcoScore(double distanceKm, double energyKwh, double durationSec, String drivingMode) {
-        /* same as before */
-        int score = 100;
-        double avgSpeed = (durationSec > 0) ? (distanceKm / (durationSec / 3600.0)) : 0.0;
-        double consumptionPerKm = (distanceKm > 0) ? (energyKwh / distanceKm) : 0;
-
-        if (avgSpeed > 120) {
-            score -= 10;
-        }
-        if ("AGGRESSIVE".equalsIgnoreCase(drivingMode)) {
-            score -= 15;
-        }
-        if (consumptionPerKm > 0.25) {
-            score -= 10;
-        }
-        if ("ECO".equalsIgnoreCase(drivingMode)) {
-            score += 10;
-        }
-        if (consumptionPerKm < 0.18) {
-            score += 10;
-        }
-
-        return Math.max(0, Math.min(100, score));
-    }
-
     private double round(double v, int decimals) {
         double scale = Math.pow(10, decimals);
         return Math.round(v * scale) / scale;
     }
 
-    // --- ORS API Call ---
-    private JsonNode callOrs(RouteRequest req) {
-        try {
-            String url = orsDirectionsUrl + "?api_key=" + orsApiKey;
-            Map<String, Object> body = new HashMap<>();
-            List<List<Double>> coordinates = Arrays.asList(
-                    Arrays.asList(req.getStartLng(), req.getStartLat()),
-                    Arrays.asList(req.getEndLng(), req.getEndLat())
-            );
-            body.put("coordinates", coordinates);
-
-            String response = restTemplate.postForObject(url, body, String.class);
-            return mapper.readTree(response);
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to call ORS API", e);
-        }
-    }
 }
