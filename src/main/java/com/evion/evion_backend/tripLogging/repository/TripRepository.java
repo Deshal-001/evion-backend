@@ -9,4 +9,6 @@ import com.evion.evion_backend.tripLogging.model.Trip;
 public interface TripRepository extends JpaRepository<Trip, Long> {
 
     List<Trip> findByUserIdOrderByTripDateDesc(Long userId);
+
+    List<Trip> findByUserId(Long userId);
 }

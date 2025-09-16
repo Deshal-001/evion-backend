@@ -1,7 +1,9 @@
 package com.evion.evion_backend.auth.controller;
 
+import com.evion.evion_backend.auth.dto.ChangePasswordRequest;
 import com.evion.evion_backend.auth.dto.LoginRequest;
 import com.evion.evion_backend.auth.dto.RegisterRequest;
+import com.evion.evion_backend.auth.dto.ResetPasswordRequest;
 import com.evion.evion_backend.auth.model.User;
 import com.evion.evion_backend.auth.service.AuthService;
 import lombok.RequiredArgsConstructor;
@@ -46,6 +48,20 @@ public class AuthController {
     public ResponseEntity<?> deleteUser(@PathVariable Long id) {
         authService.deleteUser(id);
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/user/{id}/change-password")
+    public ResponseEntity<?> changePassword(
+            @PathVariable Long id,
+            @RequestBody ChangePasswordRequest req) {
+        authService.changePassword(id, req.getOldPassword(), req.getNewPassword());
+        return ResponseEntity.ok("Password changed successfully");
+    }
+
+    @PostMapping("/forgot-password")
+    public ResponseEntity<?> resetPassword(@RequestBody ResetPasswordRequest req) {
+        authService.resetPassword(req.getEmail(), req.getNewPassword());
+        return ResponseEntity.ok("Password reset successfully");
     }
 
 }

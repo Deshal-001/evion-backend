@@ -11,6 +11,8 @@ import com.evion.evion_backend.auth.model.Role;
 import com.evion.evion_backend.auth.model.User;
 import com.evion.evion_backend.auth.repository.UserRepository;
 import com.evion.evion_backend.auth.security.JwtService;
+import com.evion.evion_backend.userProfile.model.UserProfile;
+import com.evion.evion_backend.userProfile.repository.UserProfileRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -19,6 +21,7 @@ import lombok.RequiredArgsConstructor;
 public class AuthService {
 
     private final UserRepository userRepository;
+    private final UserProfileRepository userProfileRepository;
     private final JwtService jwtService;
     private final BCryptPasswordEncoder passwordEncoder;
 
@@ -39,6 +42,17 @@ public class AuthService {
 
         //Save user
         userRepository.save(user);
+
+        // Build and save user profile
+        UserProfile profile = new UserProfile();
+        profile.setUserId(user.getId());
+        profile.setName(user.getFirstName() + " " + user.getLastName());
+        profile.setEmail(user.getEmail());
+        profile.setTotalTrips(0);
+        profile.setTotalDistanceKm(0.0);
+        profile.setTotalEcoScore(0.0);
+        profile.setTotalCo2SavedKg(0.0);
+        userProfileRepository.save(profile);
 
         //Generate JWT token
         return jwtService.generateToken(user.getEmail(),
@@ -78,8 +92,15 @@ public class AuthService {
         user.setFirstName(updatedUser.getFirstName());
         user.setLastName(updatedUser.getLastName());
         user.setRole(updatedUser.getRole());
-        // Add more fields as needed
+        user.setUpdatedAt(java.time.LocalDateTime.now());
+
+        UserProfile profile = userProfileRepository.findById(id)
+                .orElseThrow(() -> new IllegalStateException("User profile not found"));
+        profile.setName(updatedUser.getFirstName() + " " + updatedUser.getLastName());
+        userProfileRepository.save(profile);
+
         return userRepository.save(user);
+
     }
 
     public void deleteUser(Long id) {
@@ -87,6 +108,25 @@ public class AuthService {
             throw new IllegalStateException("User not found");
         }
         userRepository.deleteById(id);
+    }
+
+    // Change password for logged-in user
+    public void changePassword(Long userId, String oldPassword, String newPassword) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalStateException("User not found"));
+        if (!passwordEncoder.matches(oldPassword, user.getPassword())) {
+            throw new IllegalStateException("Old password is incorrect");
+        }
+        user.setPassword(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+    }
+
+    // Forgot password (reset password by email)
+    public void resetPassword(String email, String newPassword) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new IllegalStateException("User not found"));
+        user.setPassword(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
     }
 
 }
