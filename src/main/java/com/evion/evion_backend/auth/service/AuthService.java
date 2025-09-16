@@ -51,7 +51,8 @@ public class AuthService {
         profile.setTotalTrips(0);
         profile.setTotalDistanceKm(0.0);
         profile.setTotalEcoScore(0.0);
-        profile.setTotalCo2SavedKg(0.0);
+        profile.setTotalEnergyUsedKwh(0.0);
+        profile.setTotalCo2EmittedKg(0.0);
         userProfileRepository.save(profile);
 
         //Generate JWT token

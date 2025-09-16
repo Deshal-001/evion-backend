@@ -13,5 +13,5 @@ public class UserProfileResponse {
     private int totalTrips;
     private double totalDistanceKm;
     private double averageEcoScore;
-    private double totalCo2SavedKg;
+    private double totalCo2EmittedKg;
 }

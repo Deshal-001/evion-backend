@@ -23,11 +23,11 @@ public class TripController {
                 request.getUserId(),
                 request.getDistanceKm(),
                 request.getDurationSec(),
-                request.getEnergyUsedKwh(),
                 request.getDrivingMode(),
                 request.getStartBatteryPct(),
                 request.getEndBatteryPct(),
-                request.getSuggestedStationIds()
+                request.getSuggestedStationIds(),
+                request.getVehicleId()
         );
         return ResponseEntity.ok(trip);
     }

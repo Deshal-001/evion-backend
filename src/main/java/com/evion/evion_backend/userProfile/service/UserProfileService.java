@@ -29,7 +29,7 @@ public class UserProfileService {
                 .totalTrips(profile.getTotalTrips())
                 .totalDistanceKm(profile.getTotalDistanceKm())
                 .averageEcoScore(avgEcoScore)
-                .totalCo2SavedKg(profile.getTotalCo2SavedKg())
+                .totalCo2EmittedKg(profile.getTotalCo2EmittedKg())
                 .build();
     }
 
@@ -41,13 +41,14 @@ public class UserProfileService {
         return getUserProfile(userId);
     }
 
-    public void recordTrip(Long userId, double distanceKm, int ecoScore, double co2SavedKg) {
+    public void recordTrip(Long userId, double distanceKm, int ecoScore, double energyUsedKwh, double co2EmittedKg) {
         UserProfile profile = repository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
         profile.setTotalTrips(profile.getTotalTrips() + 1);
         profile.setTotalDistanceKm(profile.getTotalDistanceKm() + distanceKm);
         profile.setTotalEcoScore(profile.getTotalEcoScore() + ecoScore);
-        profile.setTotalCo2SavedKg(profile.getTotalCo2SavedKg() + co2SavedKg);
+        profile.setTotalEnergyUsedKwh(profile.getTotalEnergyUsedKwh() + energyUsedKwh);
+        profile.setTotalCo2EmittedKg(profile.getTotalCo2EmittedKg() + co2EmittedKg);
         repository.save(profile);
     }
 }

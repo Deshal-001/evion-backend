@@ -28,7 +28,7 @@ public class Trip {
     private double startBatteryPct;
     private double endBatteryPct;
     private List<Long> suggestedStationIds;
-    private double co2SavedKg;
-
+    private double co2EmittedKg;
+    private Long vehicleId;
     private LocalDateTime tripDate;
 }

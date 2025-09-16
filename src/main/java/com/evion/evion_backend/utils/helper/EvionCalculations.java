@@ -17,4 +17,27 @@ public class EvionCalculations {
         return (AVERAGE_PETROL_CAR_EMISSIONS_KG_PER_KM - AVERAGE_EV_EMISSIONS_KG_PER_KM) * distanceKm;
     }
 
+    /**
+     * Calculate CO2 emitted by an electric vehicle trip.
+     *
+     * @param distanceKm Distance traveled in kilometers.
+     * @param evEmissionsKgPerKm Vehicle-specific EV emissions factor (kg/km)
+     * @return CO2 emitted in kilograms.
+     */
+    public static double calculateEvCo2(double distanceKm, double evEmissionsKgPerKm) {
+        double emissions = evEmissionsKgPerKm > 0 ? evEmissionsKgPerKm : AVERAGE_EV_EMISSIONS_KG_PER_KM;
+        return distanceKm * emissions;
+    }
+
+    /**
+     * Calculate energy used for a trip.
+     *
+     * @param distanceKm Distance traveled in kilometers.
+     * @param consumptionPerKm Vehicle consumption in kWh/km
+     * @return Energy used in kWh
+     */
+    public static double calculateEnergyUsed(double distanceKm, double consumptionPerKm) {
+        return distanceKm * consumptionPerKm;
+    }
+
 }

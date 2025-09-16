@@ -21,6 +21,8 @@ public class UserProfile {
 
     private double totalEcoScore;
 
-    private double totalCo2SavedKg;
+    private double totalEnergyUsedKwh;
+
+    private double totalCo2EmittedKg;
 
 }
