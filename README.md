@@ -1,6 +1,6 @@
 # EVion Backend (Express.js)
 
-This repository has been migrated from Spring Boot to Express.js while preserving the existing API routes and core business logic.
+This repository is an Express.js backend preserving the existing API routes and core business logic.
 
 ## Stack
 
