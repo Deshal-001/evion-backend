@@ -39,6 +39,12 @@ npm start
 
 - `http://localhost:8080`
 
+## API Documentation (Swagger)
+
+- `http://localhost:8080/api-docs`
+
+The OpenAPI source file is located at `docs/openapi.yaml`.
+
 ## Main Endpoints
 
 - `POST /api/auth/register`

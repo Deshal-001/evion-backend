@@ -1,5 +1,7 @@
 const express = require("express");
 const cors = require("cors");
+const swaggerUi = require("swagger-ui-express");
+const YAML = require("yamljs");
 
 const env = require("./config/env");
 const errorHandler = require("./middleware/errorHandler");
@@ -11,6 +13,8 @@ const chargingStationRoutes = require("./routes/chargingStationRoutes");
 const userProfileRoutes = require("./routes/userProfileRoutes");
 const routeRoutes = require("./routes/routeRoutes");
 const batteryRoutes = require("./routes/batteryRoutes");
+
+const swaggerDocument = YAML.load("./docs/openapi.yaml");
 
 const app = express();
 
@@ -27,6 +31,8 @@ app.use(express.json());
 app.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });
+
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
 app.use("/api/auth", authRoutes);
 app.use("/api/vehicles", vehicleRoutes);

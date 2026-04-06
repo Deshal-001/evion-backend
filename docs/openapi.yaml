@@ -1,0 +1,856 @@
+openapi: 3.0.3
+info:
+  title: EVion Backend API
+  version: 1.0.0
+  description: Express.js backend API documentation for EVion.
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Error:
+      type: object
+      properties:
+        message:
+          type: string
+      required:
+        - message
+    RegisterRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+        role:
+          type: string
+          enum: [USER, ADMIN]
+        firstName:
+          type: string
+        lastName:
+          type: string
+      required:
+        - email
+        - password
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+      required:
+        - email
+        - password
+    ChangePasswordRequest:
+      type: object
+      properties:
+        oldPassword:
+          type: string
+        newPassword:
+          type: string
+      required:
+        - oldPassword
+        - newPassword
+    ResetPasswordRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        newPassword:
+          type: string
+      required:
+        - email
+        - newPassword
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+        role:
+          type: string
+          enum: [USER, ADMIN]
+        enabled:
+          type: boolean
+        firstName:
+          type: string
+          nullable: true
+        lastName:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - email
+        - role
+    Vehicle:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        name:
+          type: string
+          nullable: true
+        model:
+          type: string
+          nullable: true
+        licensePlate:
+          type: string
+          nullable: true
+        consumptionPerKm:
+          type: number
+          format: double
+        batteryCapacityKwh:
+          type: number
+          format: double
+        evEmissionsKgPerKm:
+          type: number
+          format: double
+      required:
+        - consumptionPerKm
+        - batteryCapacityKwh
+        - evEmissionsKgPerKm
+    TripRequest:
+      type: object
+      properties:
+        userId:
+          type: integer
+        distanceKm:
+          type: number
+          format: double
+        durationSec:
+          type: number
+          format: double
+        drivingMode:
+          type: string
+          enum: [ECO, NORMAL, AGGRESSIVE]
+        startBatteryPct:
+          type: number
+          format: double
+          nullable: true
+        endBatteryPct:
+          type: number
+          format: double
+          nullable: true
+        suggestedStationIds:
+          type: array
+          items:
+            type: integer
+        vehicleId:
+          type: integer
+      required:
+        - userId
+        - distanceKm
+        - durationSec
+        - vehicleId
+    Trip:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        distanceKm:
+          type: number
+          format: double
+        avgSpeedKmh:
+          type: number
+          format: double
+        energyUsedKwh:
+          type: number
+          format: double
+        ecoScore:
+          type: integer
+        startBatteryPct:
+          type: number
+          format: double
+          nullable: true
+        endBatteryPct:
+          type: number
+          format: double
+          nullable: true
+        suggestedStationIds:
+          type: array
+          items:
+            type: integer
+        co2EmittedKg:
+          type: number
+          format: double
+        vehicleId:
+          type: integer
+        tripDate:
+          type: string
+          format: date-time
+    ChargingStation:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+          nullable: true
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+        chargingType:
+          type: string
+          nullable: true
+        chargingSpeed:
+          type: number
+          format: double
+        costPerKwh:
+          type: number
+          format: double
+        status:
+          type: string
+          enum: [AVAILABLE, OCCUPIED, OUT_OF_SERVICE]
+      required:
+        - latitude
+        - longitude
+        - chargingSpeed
+        - costPerKwh
+        - status
+    UpdateUserProfileRequest:
+      type: object
+      properties:
+        name:
+          type: string
+      required:
+        - name
+    UserProfileResponse:
+      type: object
+      properties:
+        userId:
+          type: integer
+        name:
+          type: string
+          nullable: true
+        email:
+          type: string
+          format: email
+          nullable: true
+        totalTrips:
+          type: integer
+        totalDistanceKm:
+          type: number
+          format: double
+        averageEcoScore:
+          type: number
+          format: double
+        totalCo2EmittedKg:
+          type: number
+          format: double
+    RouteRequest:
+      type: object
+      properties:
+        startLat:
+          type: number
+          format: double
+        startLng:
+          type: number
+          format: double
+        endLat:
+          type: number
+          format: double
+        endLng:
+          type: number
+          format: double
+        batteryCapacityKwh:
+          type: number
+          format: double
+          nullable: true
+        currentChargePct:
+          type: number
+          format: double
+          nullable: true
+        consumptionPerKm:
+          type: number
+          format: double
+          nullable: true
+        drivingMode:
+          type: string
+          enum: [ECO, NORMAL, AGGRESSIVE]
+          nullable: true
+      required:
+        - startLat
+        - startLng
+        - endLat
+        - endLng
+    Coordinate:
+      type: object
+      properties:
+        lat:
+          type: number
+          format: double
+        lng:
+          type: number
+          format: double
+    RouteResponse:
+      type: object
+      properties:
+        distanceKm:
+          type: number
+          format: double
+        durationSec:
+          type: number
+          format: double
+        estimatedEnergyKwh:
+          type: number
+          format: double
+        ecoScore:
+          type: integer
+        polyline:
+          type: array
+          items:
+            $ref: '#/components/schemas/Coordinate'
+        suggestedStationIds:
+          type: array
+          items:
+            type: integer
+        message:
+          type: string
+    BatteryStatusRequest:
+      type: object
+      properties:
+        batteryCapacityKwh:
+          type: number
+          format: double
+        currentChargePct:
+          type: number
+          format: double
+        consumptionPerKm:
+          type: number
+          format: double
+        tripDistanceKm:
+          type: number
+          format: double
+        drivingMode:
+          type: string
+          enum: [ECO, NORMAL, AGGRESSIVE]
+      required:
+        - batteryCapacityKwh
+        - currentChargePct
+        - consumptionPerKm
+        - tripDistanceKm
+    BatteryStatusResponse:
+      type: object
+      properties:
+        remainingRangeKm:
+          type: number
+          format: double
+        estimatedEnergyUse:
+          type: number
+          format: double
+        canCompleteTrip:
+          type: boolean
+        alertMessage:
+          type: string
+          nullable: true
+paths:
+  /health:
+    get:
+      tags: [System]
+      summary: Health check
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '200':
+          description: JWT token
+          content:
+            application/json:
+              schema:
+                type: string
+        '500':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Login user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: JWT token
+          content:
+            application/json:
+              schema:
+                type: string
+        '500':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/user/{email}:
+    get:
+      tags: [Auth]
+      summary: Get user by email
+      parameters:
+        - in: path
+          name: email
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: User
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+  /api/auth/users:
+    get:
+      tags: [Auth]
+      summary: Get all users
+      responses:
+        '200':
+          description: Users list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+
+  /api/auth/user/{id}:
+    put:
+      tags: [Auth]
+      summary: Update user
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/User'
+      responses:
+        '200':
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+    delete:
+      tags: [Auth]
+      summary: Delete user
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: User deleted
+
+  /api/auth/user/{id}/change-password:
+    post:
+      tags: [Auth]
+      summary: Change user password
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '200':
+          description: Password change message
+          content:
+            application/json:
+              schema:
+                type: string
+
+  /api/auth/forgot-password:
+    post:
+      tags: [Auth]
+      summary: Reset password by email
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordRequest'
+      responses:
+        '200':
+          description: Password reset message
+          content:
+            application/json:
+              schema:
+                type: string
+
+  /api/vehicles:
+    post:
+      tags: [Vehicles]
+      summary: Create vehicle
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Vehicle'
+      responses:
+        '200':
+          description: Created vehicle
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Vehicle'
+
+  /api/vehicles/user/{userId}:
+    get:
+      tags: [Vehicles]
+      summary: Get vehicles by user
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Vehicle list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Vehicle'
+
+  /api/vehicles/{id}:
+    get:
+      tags: [Vehicles]
+      summary: Get vehicle by id
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Vehicle
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Vehicle'
+    put:
+      tags: [Vehicles]
+      summary: Update vehicle
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Vehicle'
+      responses:
+        '200':
+          description: Updated vehicle
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Vehicle'
+    delete:
+      tags: [Vehicles]
+      summary: Delete vehicle
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Vehicle deleted
+
+  /api/trips/log:
+    post:
+      tags: [Trips]
+      summary: Log a trip
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TripRequest'
+      responses:
+        '200':
+          description: Logged trip
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Trip'
+
+  /api/trips:
+    get:
+      tags: [Trips]
+      summary: Get trip history by user
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: userId
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Trip history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Trip'
+
+  /api/stations:
+    get:
+      tags: [Charging Stations]
+      summary: Get all charging stations
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Stations list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ChargingStation'
+    post:
+      tags: [Charging Stations]
+      summary: Create charging station (ADMIN)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChargingStation'
+      responses:
+        '200':
+          description: Created station
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChargingStation'
+
+  /api/stations/{id}:
+    get:
+      tags: [Charging Stations]
+      summary: Get charging station by id
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Station
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChargingStation'
+    put:
+      tags: [Charging Stations]
+      summary: Update charging station (ADMIN)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChargingStation'
+      responses:
+        '200':
+          description: Updated station
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChargingStation'
+    delete:
+      tags: [Charging Stations]
+      summary: Delete charging station (ADMIN)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Station deleted
+
+  /api/user/{userId}/profile:
+    get:
+      tags: [User Profile]
+      summary: Get user profile
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfileResponse'
+    put:
+      tags: [User Profile]
+      summary: Update user profile
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserProfileRequest'
+      responses:
+        '200':
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfileResponse'
+
+  /api/route/plan:
+    post:
+      tags: [Route Planner]
+      summary: Plan route and suggest charging stops
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RouteRequest'
+      responses:
+        '200':
+          description: Planned route response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RouteResponse'
+
+  /api/battery/status:
+    post:
+      tags: [Battery]
+      summary: Simulate battery status for a trip
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatteryStatusRequest'
+      responses:
+        '200':
+          description: Battery simulation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatteryStatusResponse'
